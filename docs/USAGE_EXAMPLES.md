@@ -5,11 +5,15 @@
 After cloning the repository and ensuring AWS CLI is configured:
 
 ```bash
-# Run cost analysis
-./aws-cost-estimator.sh
+# Run cost analysis (using wrapper)
+./cost-check estimate
+# OR directly
+./scripts/aws-cost-estimator.sh
 
-# Run interactive optimization
-./optimize-costs.sh
+# Run interactive optimization (using wrapper)
+./cost-check optimize
+# OR directly
+./scripts/optimize-costs.sh
 ```
 
 ## Sample Output from Your Infrastructure
@@ -111,16 +115,16 @@ Each run creates a timestamped report file:
 ### Automated Monitoring
 ```bash
 # Run daily cost check (read-only)
-./aws-cost-estimator.sh > daily-cost-$(date +%Y%m%d).txt
+./scripts/aws-cost-estimator.sh > daily-cost-$(date +%Y%m%d).txt
 
 # Weekly optimization review
-./optimize-costs.sh
+./scripts/optimize-costs.sh
 ```
 
 ### CI/CD Integration
 ```bash
 # Cost gate in deployment pipeline
-COST=$(./aws-cost-estimator.sh | grep "TOTAL MONTHLY COST" | awk '{print $4}' | tr -d '$')
+COST=$(./scripts/aws-cost-estimator.sh | grep "TOTAL MONTHLY COST" | awk '{print $4}' | tr -d '$')
 if (( $(echo "$COST > 200" | bc -l) )); then
     echo "Warning: Monthly cost exceeds budget threshold"
 fi

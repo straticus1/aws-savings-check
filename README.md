@@ -37,9 +37,9 @@ git clone https://github.com/yourusername/aws-savings-check.git
 cd aws-savings-check
 ```
 
-2. Make the script executable:
+2. Make the scripts executable:
 ```bash
-chmod +x aws-cost-estimator.sh
+chmod +x scripts/*.sh
 ```
 
 3. Ensure your AWS CLI is configured:
@@ -51,7 +51,7 @@ aws configure list
 
 ### Basic Cost Analysis
 ```bash
-./aws-cost-estimator.sh
+./scripts/aws-cost-estimator.sh
 ```
 
 This will:
@@ -171,8 +171,31 @@ For issues or questions:
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Documentation
+
+For detailed usage examples and advanced features, see:
+- [Usage Examples](docs/USAGE_EXAMPLES.md) - Real-world examples and optimization opportunities
+
+## Project Structure
+
+```
+aws-savings-check/
+├── scripts/              # Executable shell scripts
+│   ├── aws-cost-estimator.sh    # Main cost analysis tool
+│   └── optimize-costs.sh        # Interactive optimization tool
+├── docs/                # Documentation files
+│   └── USAGE_EXAMPLES.md       # Detailed usage examples
+├── README.md           # This file
+├── LICENSE             # MIT License
+└── .gitignore         # Git ignore patterns
+```
+
 ## Changelog
 
+- **v1.1.0** (2024-09-04): Repository organization
+  - Organized scripts into `scripts/` directory
+  - Moved documentation to `docs/` directory
+  - Updated paths and improved project structure
 - **v1.0.0** (2024-09-04): Initial release
   - Basic cost analysis for EC2, RDS, EBS, and Elastic IPs
   - Colorized output and optimization suggestions

@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# AWS Cost Estimator Wrapper
+# Provides easy access to cost analysis tools
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+
+case "${1:-estimate}" in
+    "estimate"|"")
+        echo "Running AWS Cost Estimator..."
+        "$SCRIPT_DIR/scripts/aws-cost-estimator.sh" "${@:2}"
+        ;;
+    "optimize")
+        echo "Running AWS Cost Optimizer..."
+        "$SCRIPT_DIR/scripts/optimize-costs.sh" "${@:2}"
+        ;;
+    "help"|"-h"|"--help")
+        echo "AWS Cost Analysis Tools"
+        echo ""
+        echo "Usage:"
+        echo "  ./cost-check [estimate]    Run cost estimation (default)"
+        echo "  ./cost-check optimize      Run interactive optimization"
+        echo "  ./cost-check help          Show this help"
+        echo ""
+        echo "Direct script access:"
+        echo "  ./scripts/aws-cost-estimator.sh"
+        echo "  ./scripts/optimize-costs.sh"
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Use './cost-check help' for usage information"
+        exit 1
+        ;;
+esac
