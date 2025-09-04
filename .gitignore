@@ -1,0 +1,48 @@
+# AWS Credentials and Config
+.aws/
+*.pem
+*.key
+*credentials*
+*config*
+
+# Generated Reports
+aws-cost-report-*.txt
+aws-cost-report-*.json
+*.log
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# macOS
+.DS_Store
+.DS_Store?
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node modules (if any scripts use Node.js)
+node_modules/
+
+# Python cache (if any Python scripts are added)
+__pycache__/
+*.pyc
+*.pyo
+
+# Backup files
+*.bak
+*.backup
+
+# Personal notes
+notes.txt
+todo.txt
+personal-*
