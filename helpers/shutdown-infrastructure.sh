@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# AWS Selective Infrastructure Shutdown Tool
-# Safely stops/terminates AWS resources with user confirmation
-# Author: Generated for AWS Cost Control
+# AWS Infrastructure Shutdown Script
+# Safely shuts down infrastructure components
+# Author: Generated for AWS Infrastructure Management
 # Date: $(date)
 
 set -e
 
-# Color codes for output
+# Color codes
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -16,12 +16,41 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-echo -e "${BOLD}${BLUE}=== AWS Selective Infrastructure Shutdown ===${NC}"
+# Default settings
+PRESERVE_EIP=false
+
+# Usage function
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo "Options:"
+    echo "  --preserve-elastic-ip  Keep Elastic IPs even if unattached"
+    echo "  -h, --help            Show this help message"
+    exit 1
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --preserve-elastic-ip)
+            PRESERVE_EIP=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
+echo -e "${BOLD}${BLUE}=== AWS Infrastructure Shutdown ===${NC}"
 echo -e "${BLUE}Region: $(aws configure get region || echo 'default')${NC}"
-echo -e "${YELLOW}⚠️  This tool will help you safely shutdown AWS resources to save costs${NC}"
+echo -e "${YELLOW}This tool will help you safely shutdown AWS resources to save costs${NC}"
 echo ""
 
-# Check if AWS CLI is configured
+# Check AWS CLI configuration
 if ! aws sts get-caller-identity &>/dev/null; then
     echo -e "${RED}Error: AWS CLI is not configured or credentials are invalid${NC}"
     exit 1
@@ -81,17 +110,17 @@ total_savings=0
 echo -e "${BOLD}${YELLOW}📊 EC2 INSTANCES${NC}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+# Get running EC2 instances
 ec2_data=$(aws ec2 describe-instances \
     --filters Name=instance-state-name,Values=running \
     --query 'Reservations[*].Instances[*].[InstanceId,InstanceType,LaunchTime,Tags[?Key==`Name`].Value|[0]]' \
     --output text)
 
 if [ -n "$ec2_data" ]; then
-    echo -e "Found running EC2 instances:\n"
-
+    echo "Running EC2 Instances:"
     while IFS=$'\t' read -r instance_id instance_type launch_time name; do
         if [ -n "$instance_id" ] && [ "$instance_id" != "None" ]; then
-            savings=$(get_ec2_savings "$instance_type")
+            instance_cost=$(get_ec2_savings "$instance_type")
             launch_date=$(date -d "$launch_time" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${launch_time%+*}" +%s 2>/dev/null || echo "0")
             current_date=$(date +%s)
             days_running=$(( (current_date - launch_date) / 86400 ))
@@ -99,7 +128,7 @@ if [ -n "$ec2_data" ]; then
             echo -e "${CYAN}Instance:${NC} $instance_id ($instance_type)"
             echo -e "${CYAN}Name:${NC}     ${name:-'Unnamed'}"
             echo -e "${CYAN}Running:${NC}  ${days_running} days"
-            echo -e "${GREEN}Savings:${NC}  \$${savings}/month if stopped"
+            echo -e "${GREEN}Savings:${NC}  \$${instance_cost}/month if stopped"
             echo ""
 
             echo -e "${YELLOW}Options:${NC}"
@@ -117,8 +146,8 @@ if [ -n "$ec2_data" ]; then
                         echo -e "${YELLOW}Stopping $instance_id...${NC}"
                         if aws ec2 stop-instances --instance-ids "$instance_id" &>/dev/null; then
                             echo -e "${GREEN}✓ Successfully stopped $instance_id${NC}"
-                            echo -e "${GREEN}💰 Monthly savings: \$${savings}${NC}"
-                            total_savings=$(echo "$total_savings + $savings" | bc -l)
+                            echo -e "${GREEN}💰 Monthly savings: \$${instance_cost}${NC}"
+                            total_savings=$(echo "$total_savings + $instance_cost" | bc -l)
                         else
                             echo -e "${RED}✗ Failed to stop $instance_id${NC}"
                         fi
@@ -133,8 +162,8 @@ if [ -n "$ec2_data" ]; then
                         echo -e "${RED}Terminating $instance_id...${NC}"
                         if aws ec2 terminate-instances --instance-ids "$instance_id" &>/dev/null; then
                             echo -e "${GREEN}✓ Successfully terminated $instance_id${NC}"
-                            echo -e "${GREEN}💰 Monthly savings: \$${savings}${NC}"
-                            total_savings=$(echo "$total_savings + $savings" | bc -l)
+                            echo -e "${GREEN}💰 Monthly savings: \$${instance_cost}${NC}"
+                            total_savings=$(echo "$total_savings + $instance_cost" | bc -l)
                         else
                             echo -e "${RED}✗ Failed to terminate $instance_id${NC}"
                         fi
@@ -154,127 +183,54 @@ else
     echo -e "${GREEN}✓ No running EC2 instances found${NC}"
 fi
 
-# RDS Instance Management
-echo -e "\n${BOLD}${YELLOW}🗄️  RDS DATABASES${NC}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-rds_data=$(aws rds describe-db-instances \
-    --query 'DBInstances[*].[DBInstanceIdentifier,DBInstanceClass,Engine,DBInstanceStatus,AllocatedStorage]' \
-    --output text)
-
-if [ -n "$rds_data" ]; then
-    echo -e "Found RDS databases:\n"
-
-    while IFS=$'\t' read -r db_id db_class engine status storage; do
-        if [ -n "$db_id" ] && [ "$db_id" != "None" ]; then
-            instance_savings=$(get_rds_savings "$db_class")
-            storage_savings=$(echo "$storage * 0.115" | bc -l)
-            total_db_savings=$(echo "$instance_savings + $storage_savings" | bc -l)
-
-            echo -e "${CYAN}Database:${NC} $db_id ($db_class)"
-            echo -e "${CYAN}Engine:${NC}   $engine"
-            echo -e "${CYAN}Storage:${NC}  ${storage}GB"
-            echo -e "${CYAN}Status:${NC}   $status"
-            echo -e "${GREEN}Savings:${NC}  \$$(printf "%.2f" $total_db_savings)/month if stopped"
-            echo ""
-
-            echo -e "${YELLOW}Options:${NC}"
-            echo "1. Stop (can restart later, keeps data)"
-            echo "2. Delete (permanent deletion - creates final snapshot)"
-            echo "3. Skip this database"
-            echo ""
-
-            read -p "Choose option (1-3): " -n 1 -r
-            echo ""
-
-            case $REPLY in
-                1)
-                    if confirm_action "STOP" "$db_id ($db_class)"; then
-                        echo -e "${YELLOW}Stopping $db_id...${NC}"
-                        if aws rds stop-db-instance --db-instance-identifier "$db_id" &>/dev/null; then
-                            echo -e "${GREEN}✓ Successfully stopped $db_id${NC}"
-                            echo -e "${GREEN}💰 Monthly savings: \$$(printf "%.2f" $total_db_savings)${NC}"
-                            total_savings=$(echo "$total_savings + $total_db_savings" | bc -l)
-                        else
-                            echo -e "${RED}✗ Failed to stop $db_id (may not support stopping)${NC}"
-                        fi
-                    fi
-                    ;;
-                2)
-                    echo -e "${RED}⚠️  DATABASE DELETION WARNING ⚠️${NC}"
-                    echo -e "${RED}Deleting will permanently remove this database!${NC}"
-                    echo -e "${YELLOW}A final snapshot will be created automatically.${NC}"
-                    echo ""
-                    if confirm_action "DELETE (with final snapshot)" "$db_id ($db_class)"; then
-                        snapshot_id="${db_id}-final-snapshot-$(date +%Y%m%d-%H%M%S)"
-                        echo -e "${YELLOW}Deleting $db_id (creating final snapshot: $snapshot_id)...${NC}"
-                        if aws rds delete-db-instance \
-                            --db-instance-identifier "$db_id" \
-                            --final-db-snapshot-identifier "$snapshot_id" \
-                            --skip-final-snapshot false &>/dev/null; then
-                            echo -e "${GREEN}✓ Successfully deleted $db_id${NC}"
-                            echo -e "${GREEN}📸 Final snapshot created: $snapshot_id${NC}"
-                            echo -e "${GREEN}💰 Monthly savings: \$$(printf "%.2f" $total_db_savings)${NC}"
-                            total_savings=$(echo "$total_savings + $total_db_savings" | bc -l)
-                        else
-                            echo -e "${RED}✗ Failed to delete $db_id${NC}"
-                        fi
-                    fi
-                    ;;
-                3)
-                    echo -e "${CYAN}Skipped $db_id${NC}"
-                    ;;
-                *)
-                    echo -e "${RED}Invalid option, skipping $db_id${NC}"
-                    ;;
-            esac
-            echo ""
-        fi
-    done <<< "$rds_data"
+# Handle Elastic IPs based on preservation setting
+if [ "$PRESERVE_EIP" = "true" ]; then
+    echo -e "\n${BOLD}${YELLOW}🌐 ELASTIC IPs${NC} (preservation enabled)"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "${CYAN}Elastic IPs will be preserved as requested.${NC}"
+    echo -e "${CYAN}Tip: Remove --preserve-elastic-ip option to clean up unattached IPs.${NC}"
+    eip_count=$(aws ec2 describe-addresses --query 'length(Addresses)' --output text)
+    echo -e "${CYAN}Currently preserving $eip_count Elastic IP(s)${NC}"
 else
-    echo -e "${GREEN}✓ No RDS databases found${NC}"
-fi
+    echo -e "\n${BOLD}${YELLOW}🌐 UNATTACHED ELASTIC IPs${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    unattached_eips=$(aws ec2 describe-addresses \
+        --query 'Addresses[?!InstanceId].[PublicIp,AllocationId]' \
+        --output text)
 
-# Unattached Elastic IPs
-echo -e "\n${BOLD}${YELLOW}🌐 UNATTACHED ELASTIC IPs${NC}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    if [ -n "$unattached_eips" ]; then
+        echo -e "Found unattached Elastic IPs (each costs \$3.65/month):\n"
 
-unattached_eips=$(aws ec2 describe-addresses \
-    --query 'Addresses[?!InstanceId].[PublicIp,AllocationId]' \
-    --output text)
+        while IFS=$'\t' read -r public_ip allocation_id; do
+            if [ -n "$public_ip" ] && [ "$public_ip" != "None" ]; then
+                echo -e "${CYAN}Elastic IP:${NC} $public_ip"
+                echo -e "${CYAN}Allocation:${NC} $allocation_id"
+                echo -e "${RED}Status:${NC}     UNATTACHED (wasting money!)"
+                echo -e "${GREEN}Savings:${NC}    \$3.65/month if released"
+                echo ""
 
-if [ -n "$unattached_eips" ]; then
-    echo -e "Found unattached Elastic IPs (each costs \$3.65/month):\n"
-
-    while IFS=$'\t' read -r public_ip allocation_id; do
-        if [ -n "$public_ip" ] && [ "$public_ip" != "None" ]; then
-            echo -e "${CYAN}Elastic IP:${NC} $public_ip"
-            echo -e "${CYAN}Allocation:${NC} $allocation_id"
-            echo -e "${RED}Status:${NC}     UNATTACHED (wasting money!)"
-            echo -e "${GREEN}Savings:${NC}    \$3.65/month if released"
-            echo ""
-
-            if confirm_action "RELEASE" "$public_ip"; then
-                echo -e "${YELLOW}Releasing $public_ip...${NC}"
-                if aws ec2 release-address --allocation-id "$allocation_id" &>/dev/null; then
-                    echo -e "${GREEN}✓ Successfully released $public_ip${NC}"
-                    echo -e "${GREEN}💰 Monthly savings: \$3.65${NC}"
-                    total_savings=$(echo "$total_savings + 3.65" | bc -l)
-                else
-                    echo -e "${RED}✗ Failed to release $public_ip${NC}"
+                if confirm_action "RELEASE" "$public_ip"; then
+                    echo -e "${YELLOW}Releasing $public_ip...${NC}"
+                    if aws ec2 release-address --allocation-id "$allocation_id" &>/dev/null; then
+                        echo -e "${GREEN}✓ Successfully released $public_ip${NC}"
+                        echo -e "${GREEN}💰 Monthly savings: \$3.65${NC}"
+                        total_savings=$(echo "$total_savings + 3.65" | bc -l)
+                    else
+                        echo -e "${RED}✗ Failed to release $public_ip${NC}"
+                    fi
                 fi
+                echo ""
             fi
-            echo ""
-        fi
-    done <<< "$unattached_eips"
-else
-    echo -e "${GREEN}✓ No unattached Elastic IPs found${NC}"
+        done <<< "$unattached_eips"
+    else
+        echo -e "${GREEN}✓ No unattached Elastic IPs found${NC}"
+    fi
 fi
 
 # Summary
 echo -e "\n${BOLD}${BLUE}=== SHUTDOWN SUMMARY ===${NC}"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 if (( $(echo "$total_savings > 0" | bc -l) )); then
     echo -e "${GREEN}💰 Total Monthly Savings: \$$(printf "%.2f" $total_savings)${NC}"
     echo -e "${GREEN}💰 Annual Savings: \$$(echo "$total_savings * 12" | bc -l | xargs printf "%.2f")${NC}"
@@ -287,9 +243,9 @@ fi
 
 echo ""
 echo -e "${CYAN}💡 Next Steps:${NC}"
-echo -e "  • Monitor your AWS billing to see cost reductions"
-echo -e "  • Use ${GREEN}./view-infrastructure.sh${NC} to check remaining resources"
-echo -e "  • Set up AWS Budgets for ongoing cost monitoring"
+echo "  • Monitor your AWS billing to see cost reductions"
+echo "  • Use ${GREEN}./view-infrastructure.sh${NC} to check remaining resources"
+echo "  • Set up AWS Budgets for ongoing cost monitoring"
 
 # Save shutdown report
 timestamp=$(date +%Y%m%d-%H%M%S)
@@ -302,6 +258,9 @@ report_file="reports/shutdown-report-$timestamp.txt"
     echo "Total Monthly Savings: \$$(printf "%.2f" $total_savings)"
     echo "Annual Savings: \$$(echo "$total_savings * 12" | bc -l | xargs printf "%.2f")"
     echo ""
+    if [ "$PRESERVE_EIP" = "true" ]; then
+        echo "Note: Elastic IPs were preserved as requested"
+    fi
     echo "Actions taken during this session have been logged above."
 } > "$report_file"
 
