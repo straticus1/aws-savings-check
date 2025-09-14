@@ -3,7 +3,8 @@
 *.pem
 *.key
 *credentials*
-*config*
+.aws-config
+aws-config
 
 # Generated Reports
 aws-cost-report-*.txt

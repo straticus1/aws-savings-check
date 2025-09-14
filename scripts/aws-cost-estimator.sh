@@ -3,9 +3,19 @@
 # AWS Monthly Cost Estimator
 # Analyzes running AWS services and estimates monthly costs
 # Author: Generated for NiteText AWS Cost Analysis
+# Version: 2.0.0
 # Date: $(date)
 
 set -e
+
+# Get script directory for relative imports
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." &> /dev/null && pwd)"
+
+# Source library functions
+source "$ROOT_DIR/lib/config.sh" 2>/dev/null || echo "Config library not found"
+source "$ROOT_DIR/lib/logging.sh" 2>/dev/null || echo "Logging library not found"
+source "$ROOT_DIR/lib/aws-services.sh" 2>/dev/null || echo "AWS services library not found"
 
 # Default options
 CREATE_JSON=false
@@ -92,27 +102,40 @@ echo -e "${BLUE}=== AWS Monthly Cost Estimator ===${NC}"
 echo -e "${BLUE}Region: $(aws configure get region || echo 'default')${NC}"
 echo ""
 
+# Load configuration
+load_config
+
+# Initialize logging
+setup_logging
+
+log_info "AWS Cost Estimator v2.0.0 starting..."
+start_timer "total_analysis"
+
 # Check dependencies
+log_info "Checking dependencies..."
+
 if ! command -v aws &> /dev/null; then
-    echo -e "${RED}Error: AWS CLI is not installed${NC}"
+    log_error_with_context "AWS CLI is not installed" "dependency_check"
     exit 1
 fi
 
 if ! command -v bc &> /dev/null; then
-    echo -e "${RED}Error: bc calculator is not installed. Please install it first.${NC}"
+    log_error_with_context "bc calculator is not installed. Please install it first." "dependency_check"
     exit 1
 fi
 
 if ! command -v jq &> /dev/null && [ "$CREATE_JSON" = true ]; then
-    echo -e "${RED}Error: jq is required for JSON output but not installed${NC}"
+    log_error_with_context "jq is required for JSON output but not installed" "dependency_check"
     exit 1
 fi
 
 # Check if AWS CLI is configured
 if ! aws sts get-caller-identity &>/dev/null; then
-    echo -e "${RED}Error: AWS CLI is not configured or credentials are invalid${NC}"
+    log_error_with_context "AWS CLI is not configured or credentials are invalid" "aws_auth"
     exit 1
 fi
+
+log_success "All dependencies verified"
 
 total_cost=0
 
@@ -152,7 +175,7 @@ if [ -n "$ec2_data" ]; then
     echo "Running EC2 Instances:"
     while IFS=$'\t' read -r instance_id instance_type launch_time name; do
         if [ -n "$instance_id" ] && [ "$instance_id" != "None" ]; then
-            instance_cost=$(get_ec2_price "$instance_type")
+            instance_cost=$(get_ec2_price_from_config "$instance_type")
             if [ "$instance_cost" == "0" ]; then
                 echo -e "  ${RED}⚠️  Unknown pricing for $instance_type${NC}"
                 instance_cost="50.00"  # Default estimate
@@ -229,7 +252,7 @@ if [ -n "$rds_data" ]; then
     echo "RDS Instances:"
     while IFS=$'\t' read -r db_id db_class engine status storage; do
         if [ -n "$db_id" ] && [ "$db_id" != "None" ]; then
-            db_instance_cost=$(get_rds_price "$db_class")
+            db_instance_cost=$(get_rds_price_from_config "$db_class")
             if [ "$db_instance_cost" == "0" ]; then
                 echo -e "  ${RED}⚠️  Unknown pricing for $db_class${NC}"
                 db_instance_cost="100.00"  # Default estimate
@@ -298,21 +321,115 @@ else
     echo "  No Elastic IPs found"
 fi
 
-# Calculate total
-total_cost=$(echo "$ec2_cost + $ebs_cost + $rds_cost + $eip_cost" | bc -l)
+# Extended AWS Service Analysis
+additional_services_cost=0
+json_additional_services="{}"
 
-# Add estimated data transfer costs
-data_transfer_estimate="10.00"
-total_with_transfer=$(echo "$total_cost + $data_transfer_estimate" | bc -l)
+# Lambda Functions
+if is_service_enabled "lambda"; then
+    echo -e "\n${YELLOW}⚡ Analyzing Lambda Functions...${NC}"
+    lambda_result=$(analyze_lambda_functions)
+    lambda_cost=$(echo "$lambda_result" | cut -d: -f1)
+    lambda_count=$(echo "$lambda_result" | cut -d: -f2)
+    json_lambda=$(echo "$lambda_result" | cut -d: -f3-)
 
-echo -e "\n${BLUE}=== COST SUMMARY ===${NC}"
-echo -e "EC2 Instances ($ec2_count):    \$$(printf "%8.2f" $ec2_cost)"
-echo -e "EBS Storage ($ebs_count):      \$$(printf "%8.2f" $ebs_cost)"
-echo -e "RDS Database ($rds_count):     \$$(printf "%8.2f" $rds_cost)"
-echo -e "Elastic IPs ($eip_count):      \$$(printf "%8.2f" $eip_cost)"
-echo -e "Data Transfer (est):   \$$(printf "%8.2f" $data_transfer_estimate)"
-echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}TOTAL MONTHLY COST:    \$$(printf "%8.2f" $total_with_transfer)${NC}"
+    if [ "$lambda_count" -gt 0 ]; then
+        echo -e "  Found $lambda_count Lambda functions - \$$(printf "%.2f" $lambda_cost)/month (estimated)"
+    else
+        echo -e "  ${GREEN}✓ No Lambda functions found${NC}"
+    fi
+    additional_services_cost=$(echo "$additional_services_cost + $lambda_cost" | bc -l)
+fi
+
+# S3 Buckets
+if is_service_enabled "s3"; then
+    echo -e "\n${YELLOW}🪣 Analyzing S3 Buckets...${NC}"
+    s3_result=$(analyze_s3_buckets)
+    s3_cost=$(echo "$s3_result" | cut -d: -f1)
+    s3_count=$(echo "$s3_result" | cut -d: -f2)
+    json_s3=$(echo "$s3_result" | cut -d: -f3-)
+
+    if [ "$s3_count" -gt 0 ]; then
+        echo -e "  Found $s3_count S3 buckets - \$$(printf "%.2f" $s3_cost)/month (estimated)"
+    else
+        echo -e "  ${GREEN}✓ No S3 buckets found${NC}"
+    fi
+    additional_services_cost=$(echo "$additional_services_cost + $s3_cost" | bc -l)
+fi
+
+# CloudWatch Logs
+if is_service_enabled "cloudwatch"; then
+    echo -e "\n${YELLOW}📊 Analyzing CloudWatch Logs...${NC}"
+    logs_result=$(analyze_cloudwatch_logs)
+    logs_cost=$(echo "$logs_result" | cut -d: -f1)
+    logs_count=$(echo "$logs_result" | cut -d: -f2)
+    json_logs=$(echo "$logs_result" | cut -d: -f3-)
+
+    if [ "$logs_count" -gt 0 ]; then
+        echo -e "  Found $logs_count log groups - \$$(printf "%.2f" $logs_cost)/month"
+    else
+        echo -e "  ${GREEN}✓ No CloudWatch log groups found${NC}"
+    fi
+    additional_services_cost=$(echo "$additional_services_cost + $logs_cost" | bc -l)
+fi
+
+# Load Balancers
+echo -e "\n${YELLOW}⚖️  Analyzing Load Balancers...${NC}"
+lb_result=$(analyze_load_balancers)
+lb_cost=$(echo "$lb_result" | cut -d: -f1)
+lb_count=$(echo "$lb_result" | cut -d: -f2)
+json_lb=$(echo "$lb_result" | cut -d: -f3-)
+
+if [ "$lb_count" -gt 0 ]; then
+    echo -e "  Found $lb_count load balancers - \$$(printf "%.2f" $lb_cost)/month"
+else
+    echo -e "  ${GREEN}✓ No load balancers found${NC}"
+fi
+additional_services_cost=$(echo "$additional_services_cost + $lb_cost" | bc -l)
+
+# NAT Gateways
+echo -e "\n${YELLOW}🌐 Analyzing NAT Gateways...${NC}"
+nat_result=$(analyze_nat_gateways)
+nat_cost=$(echo "$nat_result" | cut -d: -f1)
+nat_count=$(echo "$nat_result" | cut -d: -f2)
+json_nat=$(echo "$nat_result" | cut -d: -f3-)
+
+if [ "$nat_count" -gt 0 ]; then
+    echo -e "  Found $nat_count NAT gateways - \$$(printf "%.2f" $nat_cost)/month"
+else
+    echo -e "  ${GREEN}✓ No NAT gateways found${NC}"
+fi
+additional_services_cost=$(echo "$additional_services_cost + $nat_cost" | bc -l)
+
+# Calculate totals
+core_services_cost=$(echo "$ec2_cost + $ebs_cost + $rds_cost + $eip_cost" | bc -l)
+data_transfer_estimate="${DATA_TRANSFER_ESTIMATE:-10.00}"
+total_with_all_services=$(echo "$core_services_cost + $additional_services_cost + $data_transfer_estimate" | bc -l)
+
+echo -e "\n${BLUE}=== COMPREHENSIVE COST SUMMARY ===${NC}"
+echo -e "${CYAN}Core Services:${NC}"
+echo -e "  EC2 Instances ($ec2_count):    \$$(printf "%8.2f" $ec2_cost)"
+echo -e "  EBS Storage ($ebs_count):      \$$(printf "%8.2f" $ebs_cost)"
+echo -e "  RDS Database ($rds_count):     \$$(printf "%8.2f" $rds_cost)"
+echo -e "  Elastic IPs ($eip_count):      \$$(printf "%8.2f" $eip_cost)"
+
+if [ $(echo "$additional_services_cost > 0" | bc -l) -eq 1 ]; then
+    echo -e "${CYAN}Additional Services:${NC}"
+    [ "${lambda_cost:-0}" != "0" ] && echo -e "  Lambda Functions ($lambda_count):  \$$(printf "%8.2f" ${lambda_cost:-0})"
+    [ "${s3_cost:-0}" != "0" ] && echo -e "  S3 Buckets ($s3_count):       \$$(printf "%8.2f" ${s3_cost:-0})"
+    [ "${logs_cost:-0}" != "0" ] && echo -e "  CloudWatch Logs ($logs_count):  \$$(printf "%8.2f" ${logs_cost:-0})"
+    [ "${lb_cost:-0}" != "0" ] && echo -e "  Load Balancers ($lb_count):    \$$(printf "%8.2f" ${lb_cost:-0})"
+    [ "${nat_cost:-0}" != "0" ] && echo -e "  NAT Gateways ($nat_count):     \$$(printf "%8.2f" ${nat_cost:-0})"
+fi
+
+echo -e "${CYAN}Other Costs:${NC}"
+echo -e "  Data Transfer (est):   \$$(printf "%8.2f" $data_transfer_estimate)"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}TOTAL MONTHLY COST:    \$$(printf "%8.2f" $total_with_all_services)${NC}"
+
+# Performance summary
+end_timer "total_analysis"
+log_success "Cost analysis completed successfully"
 
 # Cost optimization suggestions
 echo -e "\n${YELLOW}💡 Cost Optimization Suggestions:${NC}"
@@ -369,24 +486,43 @@ if [ "$CREATE_JSON" = true ]; then
     "report_type": "monthly_cost_estimate"
   },
   "cost_summary": {
-    "ec2_cost": $(printf "%.2f" $ec2_cost),
-    "ebs_cost": $(printf "%.2f" $ebs_cost),
-    "rds_cost": $(printf "%.2f" $rds_cost),
-    "elastic_ip_cost": $(printf "%.2f" $eip_cost),
+    "core_services": {
+      "ec2_cost": $(printf "%.2f" $ec2_cost),
+      "ebs_cost": $(printf "%.2f" $ebs_cost),
+      "rds_cost": $(printf "%.2f" $rds_cost),
+      "elastic_ip_cost": $(printf "%.2f" $eip_cost)
+    },
+    "additional_services": {
+      "lambda_cost": $(printf "%.2f" ${lambda_cost:-0}),
+      "s3_cost": $(printf "%.2f" ${s3_cost:-0}),
+      "cloudwatch_logs_cost": $(printf "%.2f" ${logs_cost:-0}),
+      "load_balancer_cost": $(printf "%.2f" ${lb_cost:-0}),
+      "nat_gateway_cost": $(printf "%.2f" ${nat_cost:-0})
+    },
     "data_transfer_estimate": $(printf "%.2f" $data_transfer_estimate),
-    "total_monthly_cost": $(printf "%.2f" $total_with_transfer)
+    "total_monthly_cost": $(printf "%.2f" $total_with_all_services)
   },
   "resource_counts": {
     "ec2_instances": $ec2_count,
     "ebs_volumes": $ebs_count,
     "rds_instances": $rds_count,
-    "elastic_ips": $eip_count
+    "elastic_ips": $eip_count,
+    "lambda_functions": ${lambda_count:-0},
+    "s3_buckets": ${s3_count:-0},
+    "cloudwatch_log_groups": ${logs_count:-0},
+    "load_balancers": ${lb_count:-0},
+    "nat_gateways": ${nat_count:-0}
   },
   "resources": {
     "ec2_instances": $json_ec2_instances,
     "ebs_volumes": $json_ebs_volumes,
     "rds_instances": $json_rds_instances,
-    "elastic_ips": $json_elastic_ips
+    "elastic_ips": $json_elastic_ips,
+    "lambda_functions": ${json_lambda:-[]},
+    "s3_buckets": ${json_s3:-[]},
+    "cloudwatch_log_groups": ${json_logs:-[]},
+    "load_balancers": ${json_lb:-[]},
+    "nat_gateways": ${json_nat:-[]}
   },
   "optimization_suggestions": [
 $(if (( $(echo "$eip_cost > 0" | bc -l) )); then echo "    \"Release unattached Elastic IPs to save \$$(printf "%.2f" $eip_cost)/month\","; fi)

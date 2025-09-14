@@ -7,24 +7,69 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 
 case "${1:-estimate}" in
     "estimate"|"")
-        echo "Running AWS Cost Estimator..."
+        echo "Running AWS Cost Estimator v2.0..."
         "$SCRIPT_DIR/scripts/aws-cost-estimator.sh" "${@:2}"
         ;;
     "optimize")
         echo "Running AWS Cost Optimizer..."
         "$SCRIPT_DIR/scripts/optimize-costs.sh" "${@:2}"
         ;;
+    "view"|"infrastructure")
+        echo "Running Infrastructure Viewer..."
+        "$SCRIPT_DIR/helpers/view-infrastructure.sh" "${@:2}"
+        ;;
+    "shutdown")
+        echo "Running Infrastructure Shutdown..."
+        "$SCRIPT_DIR/helpers/shutdown-infrastructure.sh" "${@:2}"
+        ;;
+    "test")
+        echo "Running Test Suite..."
+        "$SCRIPT_DIR/tests/test-basic-functionality.sh" "${@:2}"
+        ;;
+    "config"|"configure")
+        echo "Configuration Management:"
+        echo "  Global config: $SCRIPT_DIR/config/aws-cost-estimator.conf"
+        echo "  User config: ~/.aws-cost-estimator.conf"
+        echo "  Local config: .aws-cost-estimator.conf"
+        echo ""
+        echo "To show current config:"
+        echo "  ./scripts/aws-cost-estimator.sh --show-config"
+        ;;
+    "version"|"-v"|"--version")
+        echo "AWS Cost Estimator & Savings Checker v2.0.0"
+        echo "Enhanced with extended service support and configuration management"
+        ;;
     "help"|"-h"|"--help")
-        echo "AWS Cost Analysis Tools"
+        echo "AWS Cost Analysis Tools v2.0.0"
         echo ""
         echo "Usage:"
-        echo "  ./cost-check [estimate]    Run cost estimation (default)"
-        echo "  ./cost-check optimize      Run interactive optimization"
-        echo "  ./cost-check help          Show this help"
+        echo "  ./cost-check [estimate]     Run comprehensive cost estimation (default)"
+        echo "  ./cost-check optimize       Run interactive optimization tool"
+        echo "  ./cost-check view           View infrastructure overview"
+        echo "  ./cost-check shutdown       Interactive infrastructure shutdown"
+        echo "  ./cost-check test           Run test suite"
+        echo "  ./cost-check config         Show configuration information"
+        echo "  ./cost-check version        Show version information"
+        echo "  ./cost-check help           Show this help"
+        echo ""
+        echo "New Features in v2.0:"
+        echo "  • Extended AWS service analysis (Lambda, S3, CloudWatch, ALB, NAT)"
+        echo "  • Configuration file support"
+        echo "  • Enhanced JSON output with detailed resource information"
+        echo "  • Structured logging with audit trails"
+        echo "  • Cross-platform compatibility"
+        echo "  • Performance monitoring and timing"
         echo ""
         echo "Direct script access:"
-        echo "  ./scripts/aws-cost-estimator.sh"
-        echo "  ./scripts/optimize-costs.sh"
+        echo "  ./scripts/aws-cost-estimator.sh [--createjson] [--outjson file.json]"
+        echo "  ./scripts/optimize-costs.sh [--non-interactive] [--createjson]"
+        echo ""
+        echo "Examples:"
+        echo "  ./cost-check estimate --createjson"
+        echo "  ./cost-check optimize --non-interactive"
+        echo "  ./cost-check view"
+        echo ""
+        echo "For advanced features, see: docs/ADVANCED_FEATURES.md"
         ;;
     *)
         echo "Unknown command: $1"

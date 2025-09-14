@@ -4,20 +4,51 @@ A comprehensive toolset to analyze your AWS infrastructure and estimate monthly 
 
 ## Features
 
-- 📊 **Real-time Cost Analysis**: Analyzes all running AWS services and calculates monthly costs
-- 💰 **Cost Breakdown**: Detailed breakdown by service type (EC2, RDS, EBS, Elastic IPs)
-- 💡 **Optimization Suggestions**: Identifies cost-saving opportunities
-- 📄 **Detailed Reports**: Generates timestamped cost reports
-- 🎨 **Colorized Output**: Easy-to-read terminal output with color coding
-- 🔍 **Instance Age Tracking**: Shows how long instances have been running
+### Core Analysis
+- 📊 **Comprehensive Cost Analysis**: Analyzes running AWS services with monthly cost calculations
+- 💰 **Detailed Cost Breakdown**: Service-by-service cost analysis with resource-level details
+- 💡 **Smart Optimization Suggestions**: AI-driven recommendations for cost reduction
+- 📄 **Multi-format Reports**: JSON and text reports with timestamped audit trails
+- 🎨 **Enhanced Terminal Output**: Colorized, structured output with progress indicators
+- 🔍 **Resource Age & Waste Tracking**: Identifies long-running resources and potential waste
+
+### Extended Service Coverage
+- ⚡ **Lambda Functions**: Memory-based cost estimation and invocation analysis
+- 🪣 **S3 Storage**: Bucket analysis with storage class recommendations
+- 📊 **CloudWatch Logs**: Log group storage costs and retention optimization
+- ⚖️ **Load Balancers**: ALB, NLB, and Classic Load Balancer cost analysis
+- 🌐 **NAT Gateways**: Data processing and hourly charge calculations
+- 🗄️ **Traditional Services**: EC2, RDS, EBS, Elastic IPs with enhanced analysis
+
+### Advanced Capabilities
+- ⚙️ **Configuration Management**: Flexible config files for pricing and behavior customization
+- 📝 **Structured Logging**: Multiple log levels with audit trail capabilities
+- 🔄 **Cross-platform Support**: Works seamlessly on Linux and macOS
+- ⚡ **Performance Monitoring**: Built-in timing and performance analysis
+- 🧪 **Testing Framework**: Automated validation and CI/CD integration
+- 🔌 **API Integration**: Rich JSON output for dashboard and monitoring integration
 
 ## Supported Services
 
-- **EC2 Instances** (all common instance types)
-- **RDS Databases** (PostgreSQL, MySQL, etc.)
-- **EBS Storage** (GP3, GP2, etc.)
-- **Elastic IPs**
-- **Data Transfer** (estimated)
+### Core Infrastructure
+- **EC2 Instances**: All instance families (t3, t4g, m5, c5, r5, etc.) with accurate pricing
+- **RDS Databases**: PostgreSQL, MySQL, Aurora with Multi-AZ analysis
+- **EBS Storage**: GP3, GP2, io1, io2 with optimization recommendations
+- **Elastic IPs**: Attached/unattached detection with cost implications
+
+### Additional Services
+- **Lambda Functions**: Memory-based pricing with invocation estimation
+- **S3 Buckets**: Storage analysis with lifecycle recommendations
+- **CloudWatch Logs**: Log group storage and retention optimization
+- **Load Balancers**: Application, Network, and Classic Load Balancers
+- **NAT Gateways**: Data processing and availability zone optimization
+- **Data Transfer**: Regional and internet transfer cost estimation
+
+### Coming Soon
+- **CloudFront**: CDN distribution analysis
+- **Route53**: DNS service costs
+- **EFS**: Elastic File System storage
+- **Redshift**: Data warehouse cost analysis
 
 ## Prerequisites
 
