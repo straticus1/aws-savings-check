@@ -7,6 +7,42 @@
 
 set -e
 
+# Default options
+CREATE_JSON=false
+OUTPUT_FILE=""
+
+# Usage function
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo "Options:"
+    echo "  --createjson         Generate JSON output in addition to text output"
+    echo "  --outjson FILE       Specify JSON output file (implies --createjson)"
+    echo "  -h, --help          Show this help message"
+    exit 1
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --createjson)
+            CREATE_JSON=true
+            shift
+            ;;
+        --outjson)
+            CREATE_JSON=true
+            OUTPUT_FILE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -56,6 +92,22 @@ echo -e "${BLUE}=== AWS Monthly Cost Estimator ===${NC}"
 echo -e "${BLUE}Region: $(aws configure get region || echo 'default')${NC}"
 echo ""
 
+# Check dependencies
+if ! command -v aws &> /dev/null; then
+    echo -e "${RED}Error: AWS CLI is not installed${NC}"
+    exit 1
+fi
+
+if ! command -v bc &> /dev/null; then
+    echo -e "${RED}Error: bc calculator is not installed. Please install it first.${NC}"
+    exit 1
+fi
+
+if ! command -v jq &> /dev/null && [ "$CREATE_JSON" = true ]; then
+    echo -e "${RED}Error: jq is required for JSON output but not installed${NC}"
+    exit 1
+fi
+
 # Check if AWS CLI is configured
 if ! aws sts get-caller-identity &>/dev/null; then
     echo -e "${RED}Error: AWS CLI is not configured or credentials are invalid${NC}"
@@ -63,6 +115,28 @@ if ! aws sts get-caller-identity &>/dev/null; then
 fi
 
 total_cost=0
+
+# Initialize JSON data structure
+json_data="{"
+json_ec2_instances="[]"
+json_ebs_volumes="[]"
+json_rds_instances="[]"
+json_elastic_ips="[]"
+
+# Cross-platform date parsing function
+parse_date() {
+    local date_string="$1"
+    # Try GNU date first (Linux)
+    if date -d "$date_string" +%s 2>/dev/null; then
+        return
+    fi
+    # Try BSD date (macOS)
+    if date -j -f "%Y-%m-%dT%H:%M:%S" "${date_string%+*}" +%s 2>/dev/null; then
+        return
+    fi
+    # Fallback
+    echo "0"
+}
 
 echo -e "${YELLOW}📊 Analyzing EC2 Instances...${NC}"
 ec2_cost=0
@@ -83,15 +157,25 @@ if [ -n "$ec2_data" ]; then
                 echo -e "  ${RED}⚠️  Unknown pricing for $instance_type${NC}"
                 instance_cost="50.00"  # Default estimate
             fi
-            
-            # Calculate days running
-            launch_date=$(date -d "$launch_time" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${launch_time%+*}" +%s 2>/dev/null || echo "0")
+
+            # Calculate days running using improved date parsing
+            launch_date=$(parse_date "$launch_time")
             current_date=$(date +%s)
             days_running=$(( (current_date - launch_date) / 86400 ))
-            
+
             echo -e "  ${GREEN}✓${NC} $instance_id ($instance_type) - ${name:-'Unnamed'} - \$${instance_cost}/month (${days_running} days old)"
             ec2_cost=$(echo "$ec2_cost + $instance_cost" | bc -l)
             ((ec2_count++))
+
+            # Add to JSON data if requested
+            if [ "$CREATE_JSON" = true ]; then
+                instance_json="{\"instance_id\":\"$instance_id\",\"instance_type\":\"$instance_type\",\"name\":\"${name:-'Unnamed'}\",\"monthly_cost\":$instance_cost,\"days_running\":$days_running,\"launch_time\":\"$launch_time\"}"
+                if [ "$json_ec2_instances" = "[]" ]; then
+                    json_ec2_instances="[$instance_json]"
+                else
+                    json_ec2_instances="${json_ec2_instances%]*},$instance_json]"
+                fi
+            fi
         fi
     done <<< "$ec2_data"
 else
@@ -116,6 +200,16 @@ if [ -n "$ebs_data" ]; then
             echo -e "  ${GREEN}✓${NC} $volume_id (${size}GB $volume_type) → $instance_id - \$$(printf "%.2f" $volume_cost)/month"
             ebs_cost=$(echo "$ebs_cost + $volume_cost" | bc -l)
             ((ebs_count++))
+
+            # Add to JSON data if requested
+            if [ "$CREATE_JSON" = true ]; then
+                volume_json="{\"volume_id\":\"$volume_id\",\"size_gb\":$size,\"volume_type\":\"$volume_type\",\"instance_id\":\"${instance_id:-null}\",\"monthly_cost\":$(printf "%.2f" $volume_cost)}"
+                if [ "$json_ebs_volumes" = "[]" ]; then
+                    json_ebs_volumes="[$volume_json]"
+                else
+                    json_ebs_volumes="${json_ebs_volumes%]*},$volume_json]"
+                fi
+            fi
         fi
     done <<< "$ebs_data"
 else
@@ -140,14 +234,24 @@ if [ -n "$rds_data" ]; then
                 echo -e "  ${RED}⚠️  Unknown pricing for $db_class${NC}"
                 db_instance_cost="100.00"  # Default estimate
             fi
-            
+
             storage_cost=$(echo "$storage * $RDS_STORAGE_PRICE" | bc -l)
             total_db_cost=$(echo "$db_instance_cost + $storage_cost" | bc -l)
-            
+
             echo -e "  ${GREEN}✓${NC} $db_id ($db_class, $engine) - ${storage}GB storage - \$$(printf "%.2f" $total_db_cost)/month"
             echo -e "    └─ Instance: \$$(printf "%.2f" $db_instance_cost), Storage: \$$(printf "%.2f" $storage_cost)"
             rds_cost=$(echo "$rds_cost + $total_db_cost" | bc -l)
             ((rds_count++))
+
+            # Add to JSON data if requested
+            if [ "$CREATE_JSON" = true ]; then
+                rds_json="{\"db_identifier\":\"$db_id\",\"db_class\":\"$db_class\",\"engine\":\"$engine\",\"status\":\"$status\",\"storage_gb\":$storage,\"instance_cost\":$(printf "%.2f" $db_instance_cost),\"storage_cost\":$(printf "%.2f" $storage_cost),\"total_monthly_cost\":$(printf "%.2f" $total_db_cost)}"
+                if [ "$json_rds_instances" = "[]" ]; then
+                    json_rds_instances="[$rds_json]"
+                else
+                    json_rds_instances="${json_rds_instances%]*},$rds_json]"
+                fi
+            fi
         fi
     done <<< "$rds_data"
 else
@@ -170,10 +274,24 @@ if [ -n "$eip_data" ]; then
             if [ "$instance_id" == "None" ] || [ -z "$instance_id" ]; then
                 echo -e "  ${RED}⚠️${NC}  $public_ip (UNATTACHED - costing money!) - \$${ELASTIC_IP_PRICE}/month"
                 eip_cost=$(echo "$eip_cost + $ELASTIC_IP_PRICE" | bc -l)
+                current_eip_cost="$ELASTIC_IP_PRICE"
+                attached_status="false"
             else
                 echo -e "  ${GREEN}✓${NC} $public_ip → $instance_id - \$0.00/month (attached)"
+                current_eip_cost="0.00"
+                attached_status="true"
             fi
             ((eip_count++))
+
+            # Add to JSON data if requested
+            if [ "$CREATE_JSON" = true ]; then
+                eip_json="{\"public_ip\":\"$public_ip\",\"instance_id\":\"${instance_id:-null}\",\"attached\":$attached_status,\"monthly_cost\":$current_eip_cost}"
+                if [ "$json_elastic_ips" = "[]" ]; then
+                    json_elastic_ips="[$eip_json]"
+                else
+                    json_elastic_ips="${json_elastic_ips%]*},$eip_json]"
+                fi
+            fi
         fi
     done <<< "$eip_data"
 else
@@ -221,7 +339,7 @@ report_file="aws-cost-report-$(date +%Y%m%d-%H%M%S).txt"
     echo "======================================"
     echo ""
     echo "EC2 Cost: \$$(printf "%.2f" $ec2_cost)"
-    echo "EBS Cost: \$$(printf "%.2f" $ebs_cost)" 
+    echo "EBS Cost: \$$(printf "%.2f" $ebs_cost)"
     echo "RDS Cost: \$$(printf "%.2f" $rds_cost)"
     echo "EIP Cost: \$$(printf "%.2f" $eip_cost)"
     echo "Data Transfer (estimated): \$$(printf "%.2f" $data_transfer_estimate)"
@@ -229,3 +347,59 @@ report_file="aws-cost-report-$(date +%Y%m%d-%H%M%S).txt"
 } > "$report_file"
 
 echo -e "\n${GREEN}📄 Detailed report saved to: $report_file${NC}"
+
+# Generate JSON output if requested
+if [ "$CREATE_JSON" = true ]; then
+    current_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    aws_region=$(aws configure get region || echo 'default')
+
+    # Set output file
+    if [ -n "$OUTPUT_FILE" ]; then
+        json_file="$OUTPUT_FILE"
+    else
+        json_file="aws-cost-report-$(date +%Y%m%d-%H%M%S).json"
+    fi
+
+    # Build complete JSON structure
+    cat > "$json_file" << EOF
+{
+  "report_metadata": {
+    "generated_at": "$current_date",
+    "aws_region": "$aws_region",
+    "report_type": "monthly_cost_estimate"
+  },
+  "cost_summary": {
+    "ec2_cost": $(printf "%.2f" $ec2_cost),
+    "ebs_cost": $(printf "%.2f" $ebs_cost),
+    "rds_cost": $(printf "%.2f" $rds_cost),
+    "elastic_ip_cost": $(printf "%.2f" $eip_cost),
+    "data_transfer_estimate": $(printf "%.2f" $data_transfer_estimate),
+    "total_monthly_cost": $(printf "%.2f" $total_with_transfer)
+  },
+  "resource_counts": {
+    "ec2_instances": $ec2_count,
+    "ebs_volumes": $ebs_count,
+    "rds_instances": $rds_count,
+    "elastic_ips": $eip_count
+  },
+  "resources": {
+    "ec2_instances": $json_ec2_instances,
+    "ebs_volumes": $json_ebs_volumes,
+    "rds_instances": $json_rds_instances,
+    "elastic_ips": $json_elastic_ips
+  },
+  "optimization_suggestions": [
+$(if (( $(echo "$eip_cost > 0" | bc -l) )); then echo "    \"Release unattached Elastic IPs to save \$$(printf "%.2f" $eip_cost)/month\","; fi)
+$(if (( ec2_count > 2 )); then echo "    \"Consider consolidating EC2 instances if possible\","; fi)
+$(if (( $(echo "$rds_cost > 60" | bc -l) )); then echo "    \"Consider downgrading RDS instance class if database load is light\","; fi)
+    "Monitor AWS Cost Explorer for detailed usage patterns",
+    "Set up AWS Budgets and billing alerts"
+  ]
+}
+EOF
+
+    # Clean up trailing commas in the suggestions array
+    sed -i.bak 's/,$//' "$json_file" && rm -f "${json_file}.bak" 2>/dev/null || true
+
+    echo -e "${GREEN}📊 JSON report saved to: $json_file${NC}"
+fi

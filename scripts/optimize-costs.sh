@@ -7,6 +7,48 @@
 
 set -e
 
+# Default options
+CREATE_JSON=false
+OUTPUT_FILE=""
+NON_INTERACTIVE=false
+
+# Usage function
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo "Options:"
+    echo "  --createjson         Generate JSON output of optimization results"
+    echo "  --outjson FILE       Specify JSON output file (implies --createjson)"
+    echo "  --non-interactive    Run analysis only, skip interactive actions"
+    echo "  -h, --help          Show this help message"
+    exit 1
+}
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --createjson)
+            CREATE_JSON=true
+            shift
+            ;;
+        --outjson)
+            CREATE_JSON=true
+            OUTPUT_FILE="$2"
+            shift 2
+            ;;
+        --non-interactive)
+            NON_INTERACTIVE=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            ;;
+    esac
+done
+
 # Color codes for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,6 +59,37 @@ NC='\033[0m' # No Color
 echo -e "${BLUE}=== AWS Cost Optimization Tool ===${NC}"
 echo -e "${BLUE}Region: $(aws configure get region || echo 'default')${NC}"
 echo ""
+
+# Check dependencies
+if ! command -v aws &> /dev/null; then
+    echo -e "${RED}Error: AWS CLI is not installed${NC}"
+    exit 1
+fi
+
+if ! command -v bc &> /dev/null; then
+    echo -e "${RED}Error: bc calculator is not installed. Please install it first.${NC}"
+    exit 1
+fi
+
+if ! command -v jq &> /dev/null && [ "$CREATE_JSON" = true ]; then
+    echo -e "${RED}Error: jq is required for JSON output but not installed${NC}"
+    exit 1
+fi
+
+# Cross-platform date parsing function
+parse_date() {
+    local date_string="$1"
+    # Try GNU date first (Linux)
+    if date -d "$date_string" +%s 2>/dev/null; then
+        return
+    fi
+    # Try BSD date (macOS)
+    if date -j -f "%Y-%m-%dT%H:%M:%S" "${date_string%+*}" +%s 2>/dev/null; then
+        return
+    fi
+    # Fallback
+    echo "0"
+}
 
 # Check if AWS CLI is configured
 if ! aws sts get-caller-identity &>/dev/null; then
@@ -73,8 +146,8 @@ analyze_ec2_consolidation() {
         
         while IFS=$'\t' read -r instance_id instance_type launch_time name core_count state; do
             if [ -n "$instance_id" ] && [ "$instance_id" != "None" ]; then
-                # Calculate days running
-                launch_date=$(date -d "$launch_time" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${launch_time%+*}" +%s 2>/dev/null || echo "0")
+                # Calculate days running using improved date parsing
+                launch_date=$(parse_date "$launch_time")
                 current_date=$(date +%s)
                 days_running=$(( (current_date - launch_date) / 86400 ))
                 
@@ -211,12 +284,71 @@ show_menu() {
     echo ""
 }
 
+# Initialize optimization results for JSON output
+declare -a optimization_results=()
+
+# Function to add optimization result
+add_optimization_result() {
+    local category="$1"
+    local description="$2"
+    local potential_savings="$3"
+    local status="$4"
+
+    if [ "$CREATE_JSON" = true ]; then
+        optimization_results+=("{\"category\":\"$category\",\"description\":\"$description\",\"potential_savings\":\"$potential_savings\",\"status\":\"$status\"}")
+    fi
+}
+
+# Function to generate JSON output
+generate_json_output() {
+    if [ "$CREATE_JSON" = true ]; then
+        current_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        aws_region=$(aws configure get region || echo 'default')
+
+        # Set output file
+        if [ -n "$OUTPUT_FILE" ]; then
+            json_file="$OUTPUT_FILE"
+        else
+            json_file="aws-optimization-results-$(date +%Y%m%d-%H%M%S).json"
+        fi
+
+        # Build JSON structure
+        cat > "$json_file" << EOF
+{
+  "report_metadata": {
+    "generated_at": "$current_date",
+    "aws_region": "$aws_region",
+    "report_type": "cost_optimization_analysis"
+  },
+  "optimization_opportunities": [
+$(IFS=$'\n'; echo "${optimization_results[*]}" | sed 's/$/,/' | sed '$s/,$//')
+  ]
+}
+EOF
+
+        echo -e "${GREEN}📊 JSON optimization report saved to: $json_file${NC}"
+    fi
+}
+
 # Main execution
+if [ "$NON_INTERACTIVE" = true ]; then
+    # Run all analyses in non-interactive mode
+    echo -e "${BLUE}Running in non-interactive mode...${NC}\n"
+    release_unattached_eips
+    analyze_ec2_consolidation
+    analyze_rds_optimization
+    analyze_ebs_optimization
+    setup_cost_monitoring
+    generate_json_output
+    exit 0
+fi
+
+# Interactive mode
 while true; do
     show_menu
     read -p "Select an option (1-7): " -n 1 -r
     echo ""
-    
+
     case $REPLY in
         1)
             release_unattached_eips
@@ -239,16 +371,18 @@ while true; do
             analyze_rds_optimization
             analyze_ebs_optimization
             setup_cost_monitoring
+            generate_json_output
             ;;
         7)
             echo -e "${GREEN}Thanks for using AWS Cost Optimization Tool!${NC}"
+            generate_json_output
             exit 0
             ;;
         *)
             echo -e "${RED}Invalid option. Please select 1-7.${NC}"
             ;;
     esac
-    
+
     echo ""
     read -p "Press Enter to continue..."
 done
