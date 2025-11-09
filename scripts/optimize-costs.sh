@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 # AWS Cost Optimization Script
 # Provides safe cost optimization actions

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 # AWS Infrastructure Shutdown Script
 # Safely shuts down infrastructure components

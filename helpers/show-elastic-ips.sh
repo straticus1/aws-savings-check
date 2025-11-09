@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 # Simple AWS Elastic IP Counter
 # Shows count and status of all Elastic IPs

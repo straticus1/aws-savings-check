@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 # AWS Infrastructure Visibility Tool
 # Shows all running resources with costs and age

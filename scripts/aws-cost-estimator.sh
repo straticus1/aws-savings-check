@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 # AWS Monthly Cost Estimator
 # Analyzes running AWS services and estimates monthly costs
@@ -188,7 +188,7 @@ if [ -n "$ec2_data" ]; then
 
             echo -e "  ${GREEN}✓${NC} $instance_id ($instance_type) - ${name:-'Unnamed'} - \$${instance_cost}/month (${days_running} days old)"
             ec2_cost=$(echo "$ec2_cost + $instance_cost" | bc -l)
-            ((ec2_count++))
+            ec2_count=$((ec2_count + 1))
 
             # Add to JSON data if requested
             if [ "$CREATE_JSON" = true ]; then
@@ -222,7 +222,7 @@ if [ -n "$ebs_data" ]; then
             volume_cost=$(echo "$size * $EBS_GP3_PRICE" | bc -l)
             echo -e "  ${GREEN}✓${NC} $volume_id (${size}GB $volume_type) → $instance_id - \$$(printf "%.2f" $volume_cost)/month"
             ebs_cost=$(echo "$ebs_cost + $volume_cost" | bc -l)
-            ((ebs_count++))
+            ebs_count=$((ebs_count + 1))
 
             # Add to JSON data if requested
             if [ "$CREATE_JSON" = true ]; then
@@ -264,7 +264,7 @@ if [ -n "$rds_data" ]; then
             echo -e "  ${GREEN}✓${NC} $db_id ($db_class, $engine) - ${storage}GB storage - \$$(printf "%.2f" $total_db_cost)/month"
             echo -e "    └─ Instance: \$$(printf "%.2f" $db_instance_cost), Storage: \$$(printf "%.2f" $storage_cost)"
             rds_cost=$(echo "$rds_cost + $total_db_cost" | bc -l)
-            ((rds_count++))
+            rds_count=$((rds_count + 1))
 
             # Add to JSON data if requested
             if [ "$CREATE_JSON" = true ]; then
@@ -304,7 +304,7 @@ if [ -n "$eip_data" ]; then
                 current_eip_cost="0.00"
                 attached_status="true"
             fi
-            ((eip_count++))
+            eip_count=$((eip_count + 1))
 
             # Add to JSON data if requested
             if [ "$CREATE_JSON" = true ]; then

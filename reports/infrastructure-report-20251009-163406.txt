@@ -1,0 +1,8 @@
+AWS Infrastructure Report - Generated Thu Oct  9 16:34:06 EDT 2025
+============================================
+
+EC2 Instances: 7 ($277.75/month)
+RDS Databases: 4 ($234.37/month)
+Unattached EIPs: 5 ($18.25/month)
+Total Monthly Cost: $530.37
+Estimated Waste: $137.79

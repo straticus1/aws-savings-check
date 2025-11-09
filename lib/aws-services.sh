@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 # AWS Services Library
 # Provides unified interface for analyzing various AWS services
@@ -28,7 +28,7 @@ analyze_lambda_functions() {
 
                 log_debug "Found Lambda function: $function_name ($runtime, ${memory_size}MB)"
                 lambda_cost=$(echo "$lambda_cost + $monthly_estimate" | bc -l)
-                ((lambda_count++))
+                lambda_count=$((lambda_count + 1))
 
                 # Add to JSON if requested
                 if [ "$CREATE_JSON" = "true" ]; then
@@ -70,7 +70,7 @@ analyze_s3_buckets() {
 
                 log_debug "Found S3 bucket: $bucket_name"
                 s3_cost=$(echo "$s3_cost + $storage_cost" | bc -l)
-                ((s3_count++))
+                s3_count=$((s3_count + 1))
 
                 # Add to JSON if requested
                 if [ "$CREATE_JSON" = "true" ]; then
@@ -112,7 +112,7 @@ analyze_cloudwatch_logs() {
 
                 log_debug "Found log group: $log_group_name ($(printf "%.2f" $stored_gb)GB)"
                 logs_cost=$(echo "$logs_cost + $storage_cost" | bc -l)
-                ((logs_count++))
+                logs_count=$((logs_count + 1))
 
                 # Add to JSON if requested
                 if [ "$CREATE_JSON" = "true" ]; then
@@ -158,7 +158,7 @@ analyze_load_balancers() {
                 local monthly_cost=22.27  # Standard ALB pricing
                 log_debug "Found Application Load Balancer: $lb_name"
                 lb_cost=$(echo "$lb_cost + $monthly_cost" | bc -l)
-                ((lb_count++))
+                lb_count=$((lb_count + 1))
 
                 if [ "$CREATE_JSON" = "true" ]; then
                     local lb_json="{\"name\":\"$lb_name\",\"type\":\"application\",\"state\":\"$state\",\"monthly_cost\":$monthly_cost}"
@@ -179,7 +179,7 @@ analyze_load_balancers() {
                 local monthly_cost=20.44  # Classic LB pricing
                 log_debug "Found Classic Load Balancer: $lb_name"
                 lb_cost=$(echo "$lb_cost + $monthly_cost" | bc -l)
-                ((lb_count++))
+                lb_count=$((lb_count + 1))
 
                 if [ "$CREATE_JSON" = "true" ]; then
                     local lb_json="{\"name\":\"$lb_name\",\"type\":\"classic\",\"state\":\"active\",\"monthly_cost\":$monthly_cost}"
@@ -217,7 +217,7 @@ analyze_nat_gateways() {
                 local monthly_cost=32.85  # NAT Gateway pricing (hours) + data processing
                 log_debug "Found NAT Gateway: $nat_id in $subnet_id"
                 nat_cost=$(echo "$nat_cost + $monthly_cost" | bc -l)
-                ((nat_count++))
+                nat_count=$((nat_count + 1))
 
                 if [ "$CREATE_JSON" = "true" ]; then
                     local nat_json="{\"nat_gateway_id\":\"$nat_id\",\"subnet_id\":\"$subnet_id\",\"state\":\"$state\",\"monthly_cost\":$monthly_cost}"

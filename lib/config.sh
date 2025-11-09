@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 # Configuration Management for AWS Cost Estimator
 # Handles loading and validation of configuration files
@@ -31,9 +31,12 @@ load_config() {
                 [[ $key =~ ^[[:space:]]*# ]] && continue
                 [[ -z "$key" ]] && continue
 
-                # Remove leading/trailing whitespace
+                # Remove inline comments (everything after #)
+                value="${value%%#*}"
+
+                # Remove leading/trailing whitespace and quotes
                 key=$(echo "$key" | xargs)
-                value=$(echo "$value" | xargs)
+                value=$(echo "$value" | xargs | sed 's/^"\(.*\)"$/\1/' | sed "s/^'\(.*\)'$/\1/")
 
                 # Export the variable
                 if [ -n "$key" ] && [ -n "$value" ]; then

@@ -80,8 +80,36 @@ aws configure list
 
 ## Usage
 
+### Quick Start with the Wrapper
+
+The `cost-check` wrapper provides easy access to all tools:
+
+```bash
+./cost-check bill        # Show current month's actual bill (what you owe right now)
+./cost-check estimate    # Run cost estimation analysis
+./cost-check optimize    # Interactive cost optimization
+./cost-check view        # View infrastructure overview
+./cost-check help        # Show all available commands
+```
+
+### Check Your Current Bill
+```bash
+./cost-check bill
+```
+
+Shows:
+- **Current charges** (what you owe right now)
+- **Bill due date** and grace period
+- **Breakdown by service** with actual costs from AWS Cost Explorer
+- **Month-to-date vs. last month** comparison
+- **End-of-month forecast**
+
+Perfect for budget planning and tracking expenses throughout the month.
+
 ### Basic Cost Analysis
 ```bash
+./cost-check estimate
+# or
 ./scripts/aws-cost-estimator.sh
 ```
 
@@ -223,6 +251,14 @@ aws-savings-check/
 
 ## Changelog
 
+- **v2.1.0** (2025-11-09): Current Bill Feature & Bug Fixes
+  - Added current bill checker with real AWS Cost Explorer data
+  - Fixed bash compatibility issues (requires bash 4.0+)
+  - Fixed configuration parser inline comment handling
+  - Fixed counter increment bug with `set -e`
+  - Fixed logging output contamination
+  - Enhanced cost-check wrapper with `bill` command
+- **v2.0.0** (2024-09-14): Comprehensive AWS Cost Estimator Enhancement
 - **v1.1.0** (2024-09-04): Repository organization
   - Organized scripts into `scripts/` directory
   - Moved documentation to `docs/` directory

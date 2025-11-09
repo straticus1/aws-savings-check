@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 # Route53 Domain Overview
 # Shows all domains and their nameservers

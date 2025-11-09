@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 # AWS Emergency Infrastructure Destroy Script
 # Use with extreme caution - this will terminate all resources

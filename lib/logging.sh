@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
 # Logging utility functions for AWS Cost Estimator
 # Provides structured logging with levels and file output
@@ -63,8 +63,8 @@ log_message() {
         local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
         local formatted_message="[$timestamp] [$level] $message"
 
-        # Console output with color
-        echo -e "${color}$formatted_message${NC}"
+        # Console output with color (to stderr so it doesn't interfere with function return values)
+        echo -e "${color}$formatted_message${NC}" >&2
 
         # File output without color
         echo "$formatted_message" >> "$LOG_FILE" 2>/dev/null || true

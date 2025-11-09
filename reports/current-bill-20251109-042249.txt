@@ -1,0 +1,29 @@
+AWS Current Bill Report
+Generated: Sun Nov  9 04:22:49 EST 2025
+========================================
+
+Billing Period: 2025-11-01 to 2025-11-30
+Current Day: 09
+Bill Due: December 10, 2025
+Grace Period Ends: December 20, 2025
+
+Month-to-Date Total: $785.38
+Projected Month-End: $3794.97
+Last Month's Total: $2215.09
+
+Top Services by Cost:
+  EC2 - Other: $183.9
+  Amazon Elastic Container Service: $161.63
+  Amazon Relational Database Service: $78.08
+  Amazon Elastic Compute Cloud - Compute: $72.63
+  Amazon Virtual Private Cloud: $58.43
+  Amazon Managed Blockchain: $55.2
+  AmazonCloudWatch: $48.67
+  Amazon ElastiCache: $40.77
+  Amazon Elastic Load Balancing: $37.61
+  Amazon Route 53: $15.74
+  AWS WAF: $8.43
+  Tax: $6.05
+  Amazon GuardDuty: $5.36
+  AWS Key Management Service: $3.52
+  Amazon Elastic File System: $2.94
